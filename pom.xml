@@ -82,6 +82,26 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- Cucumber BDD — Java + JUnit 5 + Spring integration -->
+        <dependency>
+            <groupId>io.cucumber</groupId>
+            <artifactId>cucumber-java</artifactId>
+            <version>7.18.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.cucumber</groupId>
+            <artifactId>cucumber-junit-platform-engine</artifactId>
+            <version>7.18.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.cucumber</groupId>
+            <artifactId>cucumber-spring</artifactId>
+            <version>7.18.0</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- H2 in-memory database for unit / integration tests -->
         <dependency>
             <groupId>com.h2database</groupId>

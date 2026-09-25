@@ -1,6 +1,7 @@
 package com.example.sharding.suite;
 
 import com.example.sharding.aspect.TransactionRoutingAspectTest;
+import com.example.sharding.behaviour.BehaviourTestSuite;
 import com.example.sharding.config.DataSourceConfigTest;
 import com.example.sharding.context.DataSourceKeyTest;
 import com.example.sharding.context.ShardContextHolderTest;
@@ -17,11 +18,11 @@ import org.junit.platform.suite.api.SuiteDisplayName;
  * ╚══════════════════════════════════════════════════════════════════╝
  *
  * <p>Aggregates every test class in the project into a single runnable suite.
- * Executing this class runs all 67 tests across three logical groups:
+ * Executing this class runs all tests across four logical groups:
  *
  * <pre>
  * ┌─────────────────────────────────────────────────────────────────┐
- * │  GROUP 1 — Unit Tests (41 tests)                                │
+ * │  GROUP 1 — Unit Tests (49 tests)                                │
  * │  ├── ShardContextHolderTest     (8)  ThreadLocal isolation      │
  * │  ├── DataSourceKeyTest          (8)  equals / hashCode          │
  * │  ├── DataSourceConfigTest      (15)  shard resolution logic     │
@@ -33,6 +34,11 @@ import org.junit.platform.suite.api.SuiteDisplayName;
  * ├─────────────────────────────────────────────────────────────────┤
  * │  GROUP 3 — Load Tests (6 tests)                                 │
  * │  └── LoadTest                   (6)  concurrency & throughput   │
+ * ├─────────────────────────────────────────────────────────────────┤
+ * │  GROUP 4 — Behaviour / BDD Tests (Cucumber scenarios)           │
+ * │  └── BehaviourTestSuite             order-management            │
+ * │                                     shard-routing               │
+ * │                                     replication-routing         │
  * └─────────────────────────────────────────────────────────────────┘
  * </pre>
  *
@@ -53,12 +59,15 @@ import org.junit.platform.suite.api.SuiteDisplayName;
  *   # JMH performance benchmarks (run separately — takes longer):
  *   mvn test -Dtest=PerformanceTest -DfailIfNoTests=false
  *
+ *   # Behaviour (BDD/Cucumber) tests only:
+ *   mvn test -Dtest=BehaviourTestSuite
+ *
  *   # Everything via Maven default lifecycle (excludes JMH):
  *   mvn test
  * </pre>
  */
 @Suite
-@SuiteDisplayName("Sharding & Replication — Full Test Suite (67 tests)")
+@SuiteDisplayName("Sharding & Replication — Full Test Suite")
 @SelectClasses({
     // ── Group 1: Unit Tests ───────────────────────────────────────────
     ShardContextHolderTest.class,
@@ -71,7 +80,10 @@ import org.junit.platform.suite.api.SuiteDisplayName;
     OrderControllerTest.class,
 
     // ── Group 3: Load Tests ───────────────────────────────────────────
-    LoadTest.class
+    LoadTest.class,
+
+    // ── Group 4: Behaviour / BDD Tests ───────────────────────────────
+    BehaviourTestSuite.class
 })
 public class ShardingTestSuite {
     // Suite marker class — no body needed
