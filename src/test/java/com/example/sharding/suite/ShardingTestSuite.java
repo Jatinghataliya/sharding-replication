@@ -3,6 +3,7 @@ package com.example.sharding.suite;
 import com.example.sharding.aspect.TransactionRoutingAspectTest;
 import com.example.sharding.behaviour.BehaviourTestSuite;
 import com.example.sharding.config.DataSourceConfigTest;
+import com.example.sharding.suite.FunctionalVerificationSuite;
 import com.example.sharding.context.DataSourceKeyTest;
 import com.example.sharding.context.ShardContextHolderTest;
 import com.example.sharding.controller.OrderControllerTest;
@@ -83,7 +84,10 @@ import org.junit.platform.suite.api.SuiteDisplayName;
     LoadTest.class,
 
     // ── Group 4: Behaviour / BDD Tests ───────────────────────────────
-    BehaviourTestSuite.class
+    BehaviourTestSuite.class,
+
+    // ── Group 5: Functional Verification Tests ────────────────────────
+    FunctionalVerificationSuite.class
 })
 public class ShardingTestSuite {
     // Suite marker class — no body needed

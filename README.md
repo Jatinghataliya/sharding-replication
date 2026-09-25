@@ -104,25 +104,41 @@ sharding-replication/
 │       └── GlobalExceptionHandler.java    ← Maps RuntimeException → 500 JSON
 └── src/test/java/com/example/sharding/
     ├── suite/
-    │   ├── ShardingTestSuite.java         ← Master suite (all 67 tests)
-    │   ├── UnitTestSuite.java             ← Unit tests only (49 tests)
-    │   ├── ApiTestSuite.java              ← MockMvc tests only (12 tests)
-    │   └── LoadTestSuite.java             ← Load tests only (6 tests)
+    │   ├── ShardingTestSuite.java          ← Master suite (all 171 tests)
+    │   ├── UnitTestSuite.java              ← Unit tests only (49 tests)
+    │   ├── ApiTestSuite.java               ← MockMvc tests only (12 tests)
+    │   ├── LoadTestSuite.java              ← Load tests only (6 tests)
+    │   └── FunctionalVerificationSuite.java ← FVT suite (66 tests)
     ├── context/
-    │   ├── ShardContextHolderTest.java    ← 8 tests
-    │   └── DataSourceKeyTest.java         ← 8 tests
+    │   ├── ShardContextHolderTest.java     ← 8 tests
+    │   └── DataSourceKeyTest.java          ← 8 tests
     ├── config/
-    │   └── DataSourceConfigTest.java      ← 15 tests
+    │   └── DataSourceConfigTest.java       ← 15 tests
     ├── aspect/
     │   └── TransactionRoutingAspectTest.java  ← 6 tests
     ├── service/
-    │   └── OrderServiceTest.java          ← 12 tests
+    │   └── OrderServiceTest.java           ← 12 tests
     ├── controller/
-    │   └── OrderControllerTest.java       ← 12 tests
+    │   └── OrderControllerTest.java        ← 12 tests
     ├── load/
-    │   └── LoadTest.java                  ← 6 tests
+    │   └── LoadTest.java                   ← 6 tests
+    ├── behaviour/
+    │   ├── BehaviourTestSuite.java         ← Cucumber runner
+    │   ├── CucumberSpringContext.java      ← Shared world state + Spring context
+    │   └── steps/
+    │       ├── OrderSteps.java             ← Given/When/Then for order lifecycle
+    │       ├── ShardRoutingSteps.java      ← Steps for shard resolution
+    │       └── ReplicationRoutingSteps.java ← Steps for PRIMARY/REPLICA split
+    ├── functional/
+    │   ├── FunctionalTestBase.java         ← Shared Spring context for FVTs
+    │   ├── OrderLifecycleFVT.java          ← 10 tests: create→read→update lifecycle
+    │   ├── ShardRoutingFVT.java            ← 10 tests: routing key, context, cleanup
+    │   ├── ReplicationRoutingFVT.java      ← 10 tests: PRIMARY/REPLICA role split
+    │   ├── ApiContractFVT.java             ← 13 tests: HTTP status, body, errors
+    │   ├── DataIntegrityFVT.java           ← 10 tests: amounts, timestamps, fields
+    │   └── ConcurrencyFVT.java             ←  6 tests: thread safety, no leaks
     └── performance/
-        └── PerformanceTest.java           ← JMH benchmarks (run separately)
+        └── PerformanceTest.java            ← JMH benchmarks (run separately)
 ```
 
 ## How to Run
@@ -231,34 +247,54 @@ Request → AOP detects @Transactional(readOnly)
 ### Suite Structure
 
 ```
-ShardingTestSuite  (67 tests — master suite)
+ShardingTestSuite  (171 tests — master suite)
 │
 ├── UnitTestSuite  (49 tests)
-│   ├── ShardContextHolderTest      8  ThreadLocal isolation, defaults, cross-thread
-│   ├── DataSourceKeyTest           8  equals, hashCode, toString, all combos unique
-│   ├── DataSourceConfigTest       15  shard resolution, distribution, edge cases
-│   ├── TransactionRoutingAspectTest 6  role logic, defaults, overwrite, clear
-│   └── OrderServiceTest           12  CRUD, shard routing, not-found exceptions
+│   ├── ShardContextHolderTest       8  ThreadLocal isolation, defaults, cross-thread
+│   ├── DataSourceKeyTest            8  equals, hashCode, toString, all combos unique
+│   ├── DataSourceConfigTest        15  shard resolution, distribution, edge cases
+│   ├── TransactionRoutingAspectTest  6  role logic, defaults, overwrite, clear
+│   └── OrderServiceTest            12  CRUD, shard routing, not-found exceptions
 │
 ├── ApiTestSuite   (12 tests)
-│   └── OrderControllerTest        12  MockMvc: 5 endpoints × happy + error paths
+│   └── OrderControllerTest         12  MockMvc: 5 endpoints × happy + error paths
 │
-└── LoadTestSuite  (6 tests)
-    └── LoadTest                    6  throughput, 500 threads, mixed R/W, distribution
+├── LoadTestSuite  (6 tests)
+│   └── LoadTest                     6  throughput, 500 threads, mixed R/W, distribution
+│
+├── BehaviourTestSuite  (38 Cucumber scenarios)
+│   ├── order-management.feature    16  create, read, update lifecycle
+│   ├── shard-routing.feature       12  resolution, context propagation
+│   └── replication-routing.feature 10  PRIMARY/REPLICA split
+│
+└── FunctionalVerificationSuite  (66 tests)
+    ├── OrderLifecycleFVT           10  create→read→update, data persistence
+    ├── ShardRoutingFVT             10  routing keys, context cleanup, fallback
+    ├── ReplicationRoutingFVT       10  write→PRIMARY, read→REPLICA, thread leaks
+    ├── ApiContractFVT              13  HTTP status codes, response body, errors
+    ├── DataIntegrityFVT            10  amount precision, timestamps, immutability
+    └── ConcurrencyFVT               6  thread safety, context isolation under load
 ```
 
 ### Test Results (last run)
 
-| Suite | Tests | Pass | Time |
+| Suite | Type | Tests | Pass |
 |---|---|---|---|
-| `ShardContextHolderTest` | 8 | ✅ | ~0.09s |
-| `DataSourceKeyTest` | 8 | ✅ | ~0.02s |
-| `DataSourceConfigTest` | 15 | ✅ | ~0.08s |
-| `TransactionRoutingAspectTest` | 6 | ✅ | ~0.01s |
-| `OrderServiceTest` | 12 | ✅ | ~1.4s |
-| `OrderControllerTest` | 12 | ✅ | ~3.0s |
-| `LoadTest` | 6 | ✅ | ~0.2s |
-| **Total** | **67** | **✅ 0 failures** | **~5s** |
+| `ShardContextHolderTest` | Unit | 8 | ✅ |
+| `DataSourceKeyTest` | Unit | 8 | ✅ |
+| `DataSourceConfigTest` | Unit | 15 | ✅ |
+| `TransactionRoutingAspectTest` | Unit | 6 | ✅ |
+| `OrderServiceTest` | Unit | 12 | ✅ |
+| `OrderControllerTest` | MockMvc | 12 | ✅ |
+| `LoadTest` | Load | 6 | ✅ |
+| `BehaviourTestSuite` | BDD/Cucumber | 38 | ✅ |
+| `OrderLifecycleFVT` | FVT | 10 | ✅ |
+| `ShardRoutingFVT` | FVT | 10 | ✅ |
+| `ReplicationRoutingFVT` | FVT | 10 | ✅ |
+| `ApiContractFVT` | FVT | 13 | ✅ |
+| `DataIntegrityFVT` | FVT | 10 | ✅ |
+| `ConcurrencyFVT` | FVT | 6 | ✅ |
+| **Total** | | **171** | **✅ 0 failures** |
 
 ### Load Test Benchmarks
 
@@ -272,10 +308,10 @@ Shard dist:  1000 / 1000 / 1000 across 3 shards (perfect even split)
 ### Running the Tests
 
 ```bash
-# Full master suite (all 67 tests)
+# Full master suite (all 171 tests)
 mvn test -Dtest=ShardingTestSuite
 
-# Unit tests only (49 tests, ~2s)
+# Unit tests only (49 tests)
 mvn test -Dtest=UnitTestSuite
 
 # API / MockMvc tests only (12 tests)
@@ -283,6 +319,12 @@ mvn test -Dtest=ApiTestSuite
 
 # Load / concurrency tests only (6 tests)
 mvn test -Dtest=LoadTestSuite
+
+# BDD / Cucumber behaviour tests (38 scenarios)
+mvn test -Dtest=BehaviourTestSuite
+
+# Functional Verification Tests (66 tests)
+mvn test -Dtest=FunctionalVerificationSuite
 
 # JMH performance benchmarks (run separately — ~60s)
 mvn test -Dtest=PerformanceTest -DfailIfNoTests=false
