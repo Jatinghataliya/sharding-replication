@@ -1,0 +1,153 @@
+version: "3.9"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PostgreSQL Sharding + Streaming Replication Topology
+#
+#   Shard 0 → primary: 5432  |  replica: 5435
+#   Shard 1 → primary: 5433  |  replica: 5437
+#   Shard 2 → primary: 5434  |  replica: 5438
+#
+# Each primary is configured to allow a replication slot for its replica.
+# ──────────────────────────────────────────────────────────────────────────────
+
+x-primary-env: &primary-env
+  POSTGRES_USER: app_user
+  POSTGRES_PASSWORD: secret
+  POSTGRES_REPLICATION_USER: replicator
+  POSTGRES_REPLICATION_PASSWORD: replication_secret
+
+services:
+
+  # ── Shard 0 Primary ──────────────────────────────────────────────────────────
+  shard0-primary:
+    image: postgres:16
+    container_name: shard0-primary
+    environment:
+      <<: *primary-env
+      POSTGRES_DB: shard0_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - shard0_primary_data:/var/lib/postgresql/data
+      - ./docker/init-primary.sh:/docker-entrypoint-initdb.d/init-primary.sh
+      - ./src/main/resources/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    command: >
+      postgres
+        -c wal_level=replica
+        -c max_wal_senders=3
+        -c wal_keep_size=64
+        -c hot_standby=on
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d shard0_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Shard 0 Replica ──────────────────────────────────────────────────────────
+  shard0-replica:
+    image: postgres:16
+    container_name: shard0-replica
+    environment:
+      PGUSER: replicator
+      PGPASSWORD: replication_secret
+    ports:
+      - "5435:5432"
+    volumes:
+      - shard0_replica_data:/var/lib/postgresql/data
+      - ./docker/init-replica.sh:/init-replica.sh
+    entrypoint: ["/init-replica.sh", "shard0-primary", "app_user", "secret"]
+    depends_on:
+      shard0-primary:
+        condition: service_healthy
+
+  # ── Shard 1 Primary ──────────────────────────────────────────────────────────
+  shard1-primary:
+    image: postgres:16
+    container_name: shard1-primary
+    environment:
+      <<: *primary-env
+      POSTGRES_DB: shard1_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - shard1_primary_data:/var/lib/postgresql/data
+      - ./docker/init-primary.sh:/docker-entrypoint-initdb.d/init-primary.sh
+      - ./src/main/resources/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    command: >
+      postgres
+        -c wal_level=replica
+        -c max_wal_senders=3
+        -c wal_keep_size=64
+        -c hot_standby=on
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d shard1_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Shard 1 Replica ──────────────────────────────────────────────────────────
+  shard1-replica:
+    image: postgres:16
+    container_name: shard1-replica
+    environment:
+      PGUSER: replicator
+      PGPASSWORD: replication_secret
+    ports:
+      - "5437:5432"
+    volumes:
+      - shard1_replica_data:/var/lib/postgresql/data
+      - ./docker/init-replica.sh:/init-replica.sh
+    entrypoint: ["/init-replica.sh", "shard1-primary", "app_user", "secret"]
+    depends_on:
+      shard1-primary:
+        condition: service_healthy
+
+  # ── Shard 2 Primary ──────────────────────────────────────────────────────────
+  shard2-primary:
+    image: postgres:16
+    container_name: shard2-primary
+    environment:
+      <<: *primary-env
+      POSTGRES_DB: shard2_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - shard2_primary_data:/var/lib/postgresql/data
+      - ./docker/init-primary.sh:/docker-entrypoint-initdb.d/init-primary.sh
+      - ./src/main/resources/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    command: >
+      postgres
+        -c wal_level=replica
+        -c max_wal_senders=3
+        -c wal_keep_size=64
+        -c hot_standby=on
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d shard2_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Shard 2 Replica ──────────────────────────────────────────────────────────
+  shard2-replica:
+    image: postgres:16
+    container_name: shard2-replica
+    environment:
+      PGUSER: replicator
+      PGPASSWORD: replication_secret
+    ports:
+      - "5438:5432"
+    volumes:
+      - shard2_replica_data:/var/lib/postgresql/data
+      - ./docker/init-replica.sh:/init-replica.sh
+    entrypoint: ["/init-replica.sh", "shard2-primary", "app_user", "secret"]
+    depends_on:
+      shard2-primary:
+        condition: service_healthy
+
+volumes:
+  shard0_primary_data:
+  shard0_replica_data:
+  shard1_primary_data:
+  shard1_replica_data:
+  shard2_primary_data:
+  shard2_replica_data:
