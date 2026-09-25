@@ -75,6 +75,13 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- JUnit Platform Suite engine — needed for @Suite / @SelectClasses -->
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-suite-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- H2 in-memory database for unit / integration tests -->
         <dependency>
             <groupId>com.h2database</groupId>

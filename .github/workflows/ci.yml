@@ -24,9 +24,13 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # ── 3. Build & test (exclude slow JMH benchmarks from CI) ───────────────
-      - name: Build and run tests
-        run: mvn --batch-mode --no-transfer-progress clean verify -Dtest='!PerformanceTest' -DfailIfNoTests=false
+      # ── 3. Build & run full test suite (JMH excluded — runs in separate job) ─
+      - name: Run full test suite
+        run: mvn --batch-mode --no-transfer-progress clean test -Dtest=ShardingTestSuite -DfailIfNoTests=false
+
+      # ── 4. Verify package compiles and all non-suite tests also pass ─────────
+      - name: Verify build
+        run: mvn --batch-mode --no-transfer-progress verify -DfailIfNoTests=false
 
       # ── 4. Upload JAR artifact ───────────────────────────────────────────────
       - name: Upload build artifact

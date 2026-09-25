@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Unit tests for {@link DataSourceKey} — equality, hashCode, and toString.
  */
 @DisplayName("DataSourceKey")
-class DataSourceKeyTest {
+public class DataSourceKeyTest {
 
     @Test
     @DisplayName("Two keys with the same shard and role are equal")

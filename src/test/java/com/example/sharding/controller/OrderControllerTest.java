@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(OrderController.class)
 @DisplayName("OrderController — MockMvc")
-class OrderControllerTest {
+public class OrderControllerTest {
 
     @Autowired
     private MockMvc mockMvc;

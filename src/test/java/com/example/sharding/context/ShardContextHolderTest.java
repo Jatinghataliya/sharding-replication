@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Verifies ThreadLocal isolation, default values, and cleanup.
  */
 @DisplayName("ShardContextHolder")
-class ShardContextHolderTest {
+public class ShardContextHolderTest {
 
     @AfterEach
     void cleanup() {

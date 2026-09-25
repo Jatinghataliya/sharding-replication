@@ -29,7 +29,7 @@ import static org.mockito.Mockito.*;
  */
 @DisplayName("Load Tests — Shard Routing")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class LoadTest {
+public class LoadTest {
 
     private static OrderService orderService;
     private static OrderRepository mockRepository;

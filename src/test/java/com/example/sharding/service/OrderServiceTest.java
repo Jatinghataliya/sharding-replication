@@ -26,7 +26,7 @@ import static org.mockito.Mockito.*;
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("OrderService")
-class OrderServiceTest {
+public class OrderServiceTest {
 
     @Mock
     private OrderRepository orderRepository;

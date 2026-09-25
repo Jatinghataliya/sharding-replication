@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * No Spring context is needed — pure logic tests.
  */
 @DisplayName("DataSourceConfig — shard resolution")
-class DataSourceConfigTest {
+public class DataSourceConfigTest {
 
     private static final int NUM_SHARDS = DataSourceConfig.NUM_SHARDS; // 3
 

@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Here we verify the pure role-detection logic in isolation.</p>
  */
 @DisplayName("TransactionRoutingAspect — role logic")
-class TransactionRoutingAspectTest {
+public class TransactionRoutingAspectTest {
 
     @AfterEach
     void cleanup() {
