@@ -24,9 +24,9 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # ── 3. Build & test ──────────────────────────────────────────────────────
-      - name: Build with Maven
-        run: mvn --batch-mode --no-transfer-progress clean verify
+      # ── 3. Build & test (exclude slow JMH benchmarks from CI) ───────────────
+      - name: Build and run tests
+        run: mvn --batch-mode --no-transfer-progress clean verify -Dtest='!PerformanceTest' -DfailIfNoTests=false
 
       # ── 4. Upload JAR artifact ───────────────────────────────────────────────
       - name: Upload build artifact
