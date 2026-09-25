@@ -82,23 +82,47 @@ sharding-replication/
 ├── src/main/resources/
 │   ├── application.yml
 │   └── schema.sql             ← orders table + index
-└── src/main/java/com/example/sharding/
-    ├── ShardingReplicationApplication.java
+├── src/main/java/com/example/sharding/
+│   ├── ShardingReplicationApplication.java
+│   ├── context/
+│   │   ├── ShardContextHolder.java        ← ThreadLocal: shard index + role
+│   │   └── DataSourceKey.java             ← Composite key (shardIndex, Role)
+│   ├── routing/
+│   │   └── ShardReplicaRoutingDataSource.java  ← AbstractRoutingDataSource
+│   ├── config/
+│   │   ├── DataSourceConfig.java          ← 6 DataSources registered
+│   │   ├── JpaConfig.java                 ← Hibernate wired to routing DS
+│   │   └── SwaggerConfig.java             ← OpenAPI / Swagger UI config
+│   ├── aspect/
+│   │   └── TransactionRoutingAspect.java  ← AOP: readOnly → REPLICA
+│   ├── entity/Order.java
+│   ├── repository/OrderRepository.java
+│   ├── dto/CreateOrderRequest.java
+│   ├── service/OrderService.java
+│   └── controller/
+│       ├── OrderController.java
+│       └── GlobalExceptionHandler.java    ← Maps RuntimeException → 500 JSON
+└── src/test/java/com/example/sharding/
+    ├── suite/
+    │   ├── ShardingTestSuite.java         ← Master suite (all 67 tests)
+    │   ├── UnitTestSuite.java             ← Unit tests only (49 tests)
+    │   ├── ApiTestSuite.java              ← MockMvc tests only (12 tests)
+    │   └── LoadTestSuite.java             ← Load tests only (6 tests)
     ├── context/
-    │   ├── ShardContextHolder.java   ← ThreadLocal: shard index + role
-    │   └── DataSourceKey.java        ← Composite key (shardIndex, Role)
-    ├── routing/
-    │   └── ShardReplicaRoutingDataSource.java  ← AbstractRoutingDataSource
+    │   ├── ShardContextHolderTest.java    ← 8 tests
+    │   └── DataSourceKeyTest.java         ← 8 tests
     ├── config/
-    │   ├── DataSourceConfig.java     ← 6 DataSources registered
-    │   └── JpaConfig.java            ← Hibernate wired to routing DS
+    │   └── DataSourceConfigTest.java      ← 15 tests
     ├── aspect/
-    │   └── TransactionRoutingAspect.java  ← AOP: readOnly → REPLICA
-    ├── entity/Order.java
-    ├── repository/OrderRepository.java
-    ├── dto/CreateOrderRequest.java
-    ├── service/OrderService.java
-    └── controller/OrderController.java
+    │   └── TransactionRoutingAspectTest.java  ← 6 tests
+    ├── service/
+    │   └── OrderServiceTest.java          ← 12 tests
+    ├── controller/
+    │   └── OrderControllerTest.java       ← 12 tests
+    ├── load/
+    │   └── LoadTest.java                  ← 6 tests
+    └── performance/
+        └── PerformanceTest.java           ← JMH benchmarks (run separately)
 ```
 
 ## How to Run
@@ -199,3 +223,79 @@ Request → AOP detects @Transactional(readOnly)
         → Spring resolves the matching HikariCP DataSource
         → Query executes on the correct PostgreSQL node
 ```
+
+---
+
+## Test Suite
+
+### Suite Structure
+
+```
+ShardingTestSuite  (67 tests — master suite)
+│
+├── UnitTestSuite  (49 tests)
+│   ├── ShardContextHolderTest      8  ThreadLocal isolation, defaults, cross-thread
+│   ├── DataSourceKeyTest           8  equals, hashCode, toString, all combos unique
+│   ├── DataSourceConfigTest       15  shard resolution, distribution, edge cases
+│   ├── TransactionRoutingAspectTest 6  role logic, defaults, overwrite, clear
+│   └── OrderServiceTest           12  CRUD, shard routing, not-found exceptions
+│
+├── ApiTestSuite   (12 tests)
+│   └── OrderControllerTest        12  MockMvc: 5 endpoints × happy + error paths
+│
+└── LoadTestSuite  (6 tests)
+    └── LoadTest                    6  throughput, 500 threads, mixed R/W, distribution
+```
+
+### Test Results (last run)
+
+| Suite | Tests | Pass | Time |
+|---|---|---|---|
+| `ShardContextHolderTest` | 8 | ✅ | ~0.09s |
+| `DataSourceKeyTest` | 8 | ✅ | ~0.02s |
+| `DataSourceConfigTest` | 15 | ✅ | ~0.08s |
+| `TransactionRoutingAspectTest` | 6 | ✅ | ~0.01s |
+| `OrderServiceTest` | 12 | ✅ | ~1.4s |
+| `OrderControllerTest` | 12 | ✅ | ~3.0s |
+| `LoadTest` | 6 | ✅ | ~0.2s |
+| **Total** | **67** | **✅ 0 failures** | **~5s** |
+
+### Load Test Benchmarks
+
+```
+Sequential:  1,000 creates in ~35ms  → ~28,000 req/s
+Concurrent:  500/500 threads succeeded without errors
+Mixed R/W:   200 interleaved reads + writes, 0 failures
+Shard dist:  1000 / 1000 / 1000 across 3 shards (perfect even split)
+```
+
+### Running the Tests
+
+```bash
+# Full master suite (all 67 tests)
+mvn test -Dtest=ShardingTestSuite
+
+# Unit tests only (49 tests, ~2s)
+mvn test -Dtest=UnitTestSuite
+
+# API / MockMvc tests only (12 tests)
+mvn test -Dtest=ApiTestSuite
+
+# Load / concurrency tests only (6 tests)
+mvn test -Dtest=LoadTestSuite
+
+# JMH performance benchmarks (run separately — ~60s)
+mvn test -Dtest=PerformanceTest -DfailIfNoTests=false
+
+# Full Maven lifecycle — all tests except JMH
+mvn test
+```
+
+### Swagger / OpenAPI
+
+Once the application is running:
+
+| URL | Description |
+|---|---|
+| `http://localhost:8080/swagger-ui.html` | Interactive Swagger UI |
+| `http://localhost:8080/v3/api-docs` | Raw OpenAPI JSON spec |
