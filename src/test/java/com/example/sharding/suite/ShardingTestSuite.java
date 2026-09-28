@@ -91,7 +91,10 @@ import org.junit.platform.suite.api.SuiteDisplayName;
     FunctionalVerificationSuite.class,
 
     // ── Group 6: Idempotency Tests ────────────────────────────────────
-    IdempotencyTestSuite.class
+    IdempotencyTestSuite.class,
+
+    // ── Group 7: Cross-Shard Query Tests ──────────────────────────────
+    CrossShardQuerySuite.class
 })
 public class ShardingTestSuite {
     // Suite marker class — no body needed

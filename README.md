@@ -62,6 +62,8 @@ curl -X PATCH "http://localhost:8080/api/orders/1/status?userId=101&status=SHIPP
 
 ## API Endpoints
 
+### Single-Shard Endpoints
+
 | Method | URL | Description |
 |---|---|---|
 | `POST` | `/api/orders` | Create order → PRIMARY |
@@ -69,6 +71,24 @@ curl -X PATCH "http://localhost:8080/api/orders/1/status?userId=101&status=SHIPP
 | `GET` | `/api/orders/{orderId}?userId=` | Get single order → REPLICA |
 | `PATCH`| `/api/orders/{orderId}/status` | Update status → PRIMARY |
 | `GET` | `/api/orders/shard-info?userId=` | Show shard mapping |
+
+### Cross-Shard Admin Endpoints (Fan-Out)
+
+| Method | URL | Description |
+|---|---|---|
+| `GET` | `/api/admin/orders?status=PENDING` | Fan-out query across all shards for status → returns merged `FanOutResult` |
+| `GET` | `/api/admin/orders/user/{userId}/all` | Fan-out query across all shards for user orders |
+| `GET` | `/api/admin/orders/count` | Fan-out count of orders per shard → `Map<shardIndex, count>` |
+
+## Cross-Shard Fan-Out Queries
+
+The `CrossShardQueryService` coordinates parallel scatter-gather / fan-out read operations across all database shards using `CompletableFuture.supplyAsync()` backed by a configurable thread pool (`crossshard.executor.threads`).
+
+### Key Design Highlights
+- **Parallel Execution:** Queries all 3 shards concurrently on dedicated worker threads with independent `ShardContextHolder` contexts (`Role.REPLICA`).
+- **No Cross-Shard Transactions:** Per-shard repository queries are transactional (`@Transactional(readOnly = true)`), while the fan-out coordinator itself is non-transactional.
+- **Graceful Degradation:** If a shard times out or fails, the remaining shards' data is aggregated and returned alongside individual shard status and `degraded: true` (returning HTTP 206 Partial Content or HTTP 200).
+- **Result Aggregation & Sorting:** Orders collected from responding shards are sorted by `createdAt DESC`.
 
 ## Project Structure
 
@@ -97,18 +117,25 @@ sharding-replication/
 │   │   └── TransactionRoutingAspect.java  ← AOP: readOnly → REPLICA
 │   ├── entity/Order.java
 │   ├── repository/OrderRepository.java
-│   ├── dto/CreateOrderRequest.java
-│   ├── service/OrderService.java
+│   ├── dto/
+│   │   ├── CreateOrderRequest.java
+│   │   ├── ShardQueryResult.java          ← Per-shard query result wrapper
+│   │   └── FanOutResult.java              ← Aggregated cross-shard result
+│   ├── service/
+│   │   ├── OrderService.java
+│   │   └── CrossShardQueryService.java    ← Parallel fan-out coordinator
 │   └── controller/
 │       ├── OrderController.java
+│       ├── CrossShardOrderController.java ← Cross-shard admin API endpoints
 │       └── GlobalExceptionHandler.java    ← Maps RuntimeException → 500 JSON
 └── src/test/java/com/example/sharding/
-    ├── suite/
-    │   ├── ShardingTestSuite.java          ← Master suite (all 171 tests)
-    │   ├── UnitTestSuite.java              ← Unit tests only (49 tests)
-    │   ├── ApiTestSuite.java               ← MockMvc tests only (12 tests)
-    │   ├── LoadTestSuite.java              ← Load tests only (6 tests)
-    │   └── FunctionalVerificationSuite.java ← FVT suite (66 tests)
+	├── suite/
+	│   ├── ShardingTestSuite.java          ← Master suite
+	│   ├── UnitTestSuite.java              ← Unit tests only
+	│   ├── ApiTestSuite.java               ← MockMvc tests only
+	│   ├── LoadTestSuite.java              ← Load tests only
+	│   ├── FunctionalVerificationSuite.java ← FVT suite
+	│   └── CrossShardQuerySuite.java       ← Cross-shard fan-out test suite
     ├── context/
     │   ├── ShardContextHolderTest.java     ← 8 tests
     │   └── DataSourceKeyTest.java          ← 8 tests

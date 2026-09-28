@@ -5,6 +5,10 @@ spring:
 idempotency:
   ttl-hours: 24   # how long an Idempotency-Key is remembered (default 24 h)
 
+crossshard:
+  executor:
+    threads: 3    # thread pool size for parallel cross-shard fan-out
+
   jpa:
     hibernate:
       ddl-auto: none
