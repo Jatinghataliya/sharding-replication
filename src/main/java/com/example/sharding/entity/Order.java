@@ -41,6 +41,10 @@ public class Order {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    @Schema(description = "Client-supplied idempotency key (UUID). Duplicate requests with the same key return the original order.", example = "550e8400-e29b-41d4-a716-446655440000")
+    @Column(name = "idempotency_key", length = 64, unique = true)
+    private String idempotencyKey;
+
     public Order(Long userId, BigDecimal amount) {
         this.userId    = userId;
         this.amount    = amount;

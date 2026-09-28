@@ -31,7 +31,7 @@ public class OrderLifecycleFVT extends FunctionalTestBase {
     @Test
     @DisplayName("FVT-OL-01: Created order is persisted with PENDING status and correct fields")
     void createdOrder_hasCorrectFieldValues() {
-        Order result = orderService.createOrder(101L, new BigDecimal("250.00"));
+        Order result = orderService.createOrder(101L, new BigDecimal("250.00"), null).getOrder();
 
         assertThat(result).isNotNull();
         assertThat(result.getOrderId()).isNotNull().isPositive();
@@ -153,7 +153,7 @@ public class OrderLifecycleFVT extends FunctionalTestBase {
     void multipleCreates_eachCallsRepositorySave() {
         int count = 5;
         for (int i = 0; i < count; i++) {
-            orderService.createOrder(101L, BigDecimal.TEN);
+            orderService.createOrder(101L, BigDecimal.TEN, null);
         }
         verify(orderRepository, times(count)).save(any(Order.class));
     }
@@ -163,7 +163,7 @@ public class OrderLifecycleFVT extends FunctionalTestBase {
     @Test
     @DisplayName("FVT-OL-10: Order amount with full decimal precision is stored exactly")
     void amountPrecision_isPreserved() {
-        Order result = orderService.createOrder(101L, new BigDecimal("99.99"));
+        Order result = orderService.createOrder(101L, new BigDecimal("99.99"), null).getOrder();
         assertThat(result.getAmount()).isEqualByComparingTo(new BigDecimal("99.99"));
     }
 }

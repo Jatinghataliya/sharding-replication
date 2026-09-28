@@ -4,6 +4,7 @@ import com.example.sharding.config.DataSourceConfig;
 import com.example.sharding.dto.CreateOrderRequest;
 import com.example.sharding.entity.Order;
 import com.example.sharding.service.OrderService;
+import com.example.sharding.service.OrderService.OrderResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -29,20 +30,42 @@ public class OrderController {
         this.orderService = orderService;
     }
 
+    // ── POST /api/orders ──────────────────────────────────────────────────────
+
     @Operation(
-        summary = "Create a new order",
-        description = "Persists a new order on the PRIMARY of the shard resolved from `userId`. Shard = userId % 3."
+        summary = "Create a new order (idempotent)",
+        description = """
+            Persists a new order on the PRIMARY of the shard resolved from `userId`.
+
+            **Idempotency:** Supply the `Idempotency-Key` header (a UUID or any unique string ≤ 64 chars).
+            - **First request** → order is created, HTTP **201 Created** returned.
+            - **Retry with same key** (within 24 h TTL) → original order returned, HTTP **200 OK**.
+            - **No key supplied** → request is not idempotent (always creates a new order).
+            """
     )
     @ApiResponses({
-        @ApiResponse(responseCode = "201", description = "Order created",
+        @ApiResponse(responseCode = "201", description = "Order created (new)",
             content = @Content(schema = @Schema(implementation = Order.class))),
-        @ApiResponse(responseCode = "400", description = "Invalid request body", content = @Content)
+        @ApiResponse(responseCode = "200", description = "Order already exists — idempotent replay",
+            content = @Content(schema = @Schema(implementation = Order.class))),
+        @ApiResponse(responseCode = "400", description = "Invalid request body or invalid Idempotency-Key",
+            content = @Content)
     })
     @PostMapping
-    public ResponseEntity<Order> createOrder(@RequestBody CreateOrderRequest request) {
-        Order saved = orderService.createOrder(request.getUserId(), request.getAmount());
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    public ResponseEntity<Order> createOrder(
+            @RequestBody CreateOrderRequest request,
+            @Parameter(description = "Client-generated unique key (UUID recommended, max 64 chars). Ensures the request is idempotent.", example = "550e8400-e29b-41d4-a716-446655440000")
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+
+        OrderResult result = orderService.createOrder(
+                request.getUserId(), request.getAmount(), idempotencyKey);
+
+        // 201 for a fresh order, 200 for an idempotent replay
+        HttpStatus status = result.isReplay() ? HttpStatus.OK : HttpStatus.CREATED;
+        return ResponseEntity.status(status).body(result.getOrder());
     }
+
+    // ── GET /api/orders/user/{userId} ─────────────────────────────────────────
 
     @Operation(
         summary = "Get all orders for a user",
@@ -58,6 +81,8 @@ public class OrderController {
             @PathVariable long userId) {
         return ResponseEntity.ok(orderService.getOrdersByUser(userId));
     }
+
+    // ── GET /api/orders/{orderId} ─────────────────────────────────────────────
 
     @Operation(
         summary = "Get a single order by ID",
@@ -76,6 +101,8 @@ public class OrderController {
             @RequestParam long userId) {
         return ResponseEntity.ok(orderService.getOrderById(userId, orderId));
     }
+
+    // ── PATCH /api/orders/{orderId}/status ────────────────────────────────────
 
     @Operation(
         summary = "Update order status",
@@ -96,6 +123,8 @@ public class OrderController {
             @RequestParam String status) {
         return ResponseEntity.ok(orderService.updateOrderStatus(userId, orderId, status));
     }
+
+    // ── GET /api/orders/shard-info ────────────────────────────────────────────
 
     @Operation(
         summary = "Get shard info for a userId",

@@ -3,6 +3,8 @@ package com.example.sharding.load;
 import com.example.sharding.config.DataSourceConfig;
 import com.example.sharding.context.ShardContextHolder;
 import com.example.sharding.entity.Order;
+import com.example.sharding.idempotency.IdempotencyService;
+import com.example.sharding.repository.IdempotencyRepository;
 import com.example.sharding.repository.OrderRepository;
 import com.example.sharding.service.OrderService;
 import org.junit.jupiter.api.*;
@@ -11,7 +13,6 @@ import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,13 +32,17 @@ import static org.mockito.Mockito.*;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class LoadTest {
 
-    private static OrderService orderService;
-    private static OrderRepository mockRepository;
+    private static OrderService          orderService;
+    private static OrderRepository       mockRepository;
+    private static IdempotencyRepository mockIdempotencyRepository;
+    private static IdempotencyService    idempotencyService;
 
     @BeforeAll
     static void setup() {
-        mockRepository = mock(OrderRepository.class);
-        orderService   = new OrderService(mockRepository);
+        mockRepository            = mock(OrderRepository.class);
+        mockIdempotencyRepository = mock(IdempotencyRepository.class);
+        idempotencyService        = new IdempotencyService(mockIdempotencyRepository, mockRepository);
+        orderService              = new OrderService(mockRepository, idempotencyService);
 
         // Stub save to return the passed order with a fake ID
         when(mockRepository.save(any(Order.class))).thenAnswer(inv -> {
@@ -46,6 +51,9 @@ public class LoadTest {
             return o;
         });
         when(mockRepository.findByUserId(anyLong())).thenReturn(List.of());
+        // Idempotency repo: no existing records
+        when(mockIdempotencyRepository.findById(any())).thenReturn(java.util.Optional.empty());
+        when(mockIdempotencyRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
     @AfterEach
@@ -63,7 +71,7 @@ public class LoadTest {
         long start = System.currentTimeMillis();
 
         for (int i = 0; i < requestCount; i++) {
-            orderService.createOrder(i, new BigDecimal("10.00"));
+            orderService.createOrder(i, new BigDecimal("10.00"), null);
         }
 
         long elapsed = System.currentTimeMillis() - start;
@@ -93,7 +101,7 @@ public class LoadTest {
             final long userId = i;
             executor.submit(() -> {
                 try {
-                    orderService.createOrder(userId, new BigDecimal("10.00"));
+                    orderService.createOrder(userId, new BigDecimal("10.00"), null);
                     successCount.incrementAndGet();
                 } catch (Exception e) {
                     errorCount.incrementAndGet();
@@ -170,7 +178,7 @@ public class LoadTest {
             executor.submit(() -> {
                 try {
                     if (isWrite) {
-                        orderService.createOrder(userId, BigDecimal.TEN);
+                        orderService.createOrder(userId, BigDecimal.TEN, null);
                     } else {
                         orderService.getOrdersByUser(userId);
                     }
@@ -234,7 +242,7 @@ public class LoadTest {
             final long userId = i;
             executor.submit(() -> {
                 try {
-                    orderService.createOrder(userId, BigDecimal.TEN);
+                    orderService.createOrder(userId, BigDecimal.TEN, null);
                 } finally {
                     ShardContextHolder.clear();
                     latch.countDown();

@@ -33,7 +33,7 @@ public class ReplicationRoutingFVT extends FunctionalTestBase {
     @Test
     @DisplayName("FVT-RR-01: createOrder routes to PRIMARY (write operation)")
     void createOrder_routesToPrimary() {
-        orderService.createOrder(101L, BigDecimal.TEN);
+        orderService.createOrder(101L, BigDecimal.TEN, null);
         assertThat(capturedRole).isEqualTo(Role.PRIMARY);
     }
 
@@ -79,7 +79,7 @@ public class ReplicationRoutingFVT extends FunctionalTestBase {
     @Test
     @DisplayName("FVT-RR-05: Role is reset to default PRIMARY after a write operation completes")
     void role_resetToPrimary_afterWrite() {
-        orderService.createOrder(101L, BigDecimal.TEN);
+        orderService.createOrder(101L, BigDecimal.TEN, null);
         // AOP clears the context — getRole() should return the default
         assertThat(ShardContextHolder.getRole()).isEqualTo(Role.PRIMARY);
     }
@@ -108,7 +108,7 @@ public class ReplicationRoutingFVT extends FunctionalTestBase {
         });
 
         // Write 1 → PRIMARY
-        orderService.createOrder(101L, BigDecimal.TEN);
+        orderService.createOrder(101L, BigDecimal.TEN, null);
         assertThat(capturedRole).isEqualTo(Role.PRIMARY);
 
         // Read → REPLICA
@@ -127,7 +127,7 @@ public class ReplicationRoutingFVT extends FunctionalTestBase {
     @DisplayName("FVT-RR-08: Role and shard index are set independently without interference")
     void roleAndShard_areSetIndependently() {
         // userId=2 → shard 2, role PRIMARY
-        orderService.createOrder(2L, BigDecimal.TEN);
+        orderService.createOrder(2L, BigDecimal.TEN, null);
         assertThat(capturedShard).isEqualTo(2);
         assertThat(capturedRole).isEqualTo(Role.PRIMARY);
 
@@ -135,7 +135,7 @@ public class ReplicationRoutingFVT extends FunctionalTestBase {
         stubSave();
 
         // userId=1 → shard 1, role PRIMARY
-        orderService.createOrder(1L, BigDecimal.TEN);
+        orderService.createOrder(1L, BigDecimal.TEN, null);
         assertThat(capturedShard).isEqualTo(1);
         assertThat(capturedRole).isEqualTo(Role.PRIMARY);
     }

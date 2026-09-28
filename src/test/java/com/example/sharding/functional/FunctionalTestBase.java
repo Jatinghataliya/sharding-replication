@@ -3,9 +3,12 @@ package com.example.sharding.functional;
 import com.example.sharding.aspect.TransactionRoutingAspect;
 import com.example.sharding.context.ShardContextHolder;
 import com.example.sharding.entity.Order;
+import com.example.sharding.idempotency.IdempotencyService;
+import com.example.sharding.repository.IdempotencyRepository;
 import com.example.sharding.repository.OrderRepository;
 import com.example.sharding.service.OrderService;
 import org.mockito.Mockito;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
@@ -25,9 +28,9 @@ import static org.mockito.Mockito.when;
  *
  * <p>Provides a minimal Spring context containing:
  * <ul>
- *   <li>{@link OrderService} — class under functional verification</li>
+ *   <li>{@link OrderService} + {@link IdempotencyService} — classes under test</li>
  *   <li>{@link TransactionRoutingAspect} — AOP wiring for read/write splitting</li>
- *   <li>Mockito mock of {@link OrderRepository} — no real DB needed</li>
+ *   <li>Mockito mocks for repositories — no real DB needed</li>
  * </ul>
  *
  * <p>Each FVT subclass gets a fresh Spring context and can call
@@ -44,15 +47,25 @@ public abstract class FunctionalTestBase {
         public OrderRepository orderRepository() {
             return Mockito.mock(OrderRepository.class);
         }
+
+        @Bean
+        public IdempotencyRepository idempotencyRepository() {
+            return Mockito.mock(IdempotencyRepository.class);
+        }
+
+        @Bean
+        public IdempotencyService idempotencyService(IdempotencyRepository idempotencyRepository,
+                                                     OrderRepository orderRepository) {
+            IdempotencyService svc = new IdempotencyService(idempotencyRepository, orderRepository);
+            return svc;
+        }
     }
 
     // ── Injected beans ────────────────────────────────────────────────────────
 
-    @org.springframework.beans.factory.annotation.Autowired
-    protected OrderService orderService;
-
-    @org.springframework.beans.factory.annotation.Autowired
-    protected OrderRepository orderRepository;
+    @Autowired protected OrderService          orderService;
+    @Autowired protected OrderRepository       orderRepository;
+    @Autowired protected IdempotencyRepository idempotencyRepository;
 
     // ── Context capture helpers ───────────────────────────────────────────────
 
@@ -62,7 +75,10 @@ public abstract class FunctionalTestBase {
     // ── Setup helpers ─────────────────────────────────────────────────────────
 
     protected void resetMocks() {
-        Mockito.reset(orderRepository);
+        Mockito.reset(orderRepository, idempotencyRepository);
+        // Stub idempotencyRepository to behave as if no prior key exists
+        when(idempotencyRepository.findById(any())).thenReturn(java.util.Optional.empty());
+        when(idempotencyRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         capturedShard = -1;
         capturedRole  = null;
         ShardContextHolder.clear();

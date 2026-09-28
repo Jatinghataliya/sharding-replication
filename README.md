@@ -247,7 +247,7 @@ Request → AOP detects @Transactional(readOnly)
 ### Suite Structure
 
 ```
-ShardingTestSuite  (171 tests — master suite)
+ShardingTestSuite  (184 tests — master suite)
 │
 ├── UnitTestSuite  (49 tests)
 │   ├── ShardContextHolderTest       8  ThreadLocal isolation, defaults, cross-thread
@@ -267,13 +267,16 @@ ShardingTestSuite  (171 tests — master suite)
 │   ├── shard-routing.feature       12  resolution, context propagation
 │   └── replication-routing.feature 10  PRIMARY/REPLICA split
 │
-└── FunctionalVerificationSuite  (66 tests)
-    ├── OrderLifecycleFVT           10  create→read→update, data persistence
-    ├── ShardRoutingFVT             10  routing keys, context cleanup, fallback
-    ├── ReplicationRoutingFVT       10  write→PRIMARY, read→REPLICA, thread leaks
-    ├── ApiContractFVT              13  HTTP status codes, response body, errors
-    ├── DataIntegrityFVT            10  amount precision, timestamps, immutability
-    └── ConcurrencyFVT               6  thread safety, context isolation under load
+├── FunctionalVerificationSuite  (66 tests)
+│   ├── OrderLifecycleFVT           10  create→read→update, data persistence
+│   ├── ShardRoutingFVT             10  routing keys, context cleanup, fallback
+│   ├── ReplicationRoutingFVT       10  write→PRIMARY, read→REPLICA, thread leaks
+│   ├── ApiContractFVT              13  HTTP status codes, response body, errors
+│   ├── DataIntegrityFVT            10  amount precision, timestamps, immutability
+│   └── ConcurrencyFVT               6  thread safety, context isolation under load
+│
+└── IdempotencyTestSuite  (13 tests)
+    └── IdempotencyTest             13  key validation, replay detection, TTL expiry
 ```
 
 ### Test Results (last run)
@@ -294,7 +297,8 @@ ShardingTestSuite  (171 tests — master suite)
 | `ApiContractFVT` | FVT | 13 | ✅ |
 | `DataIntegrityFVT` | FVT | 10 | ✅ |
 | `ConcurrencyFVT` | FVT | 6 | ✅ |
-| **Total** | | **171** | **✅ 0 failures** |
+| `IdempotencyTest` | Idempotency | 13 | ✅ |
+| **Total** | | **184** | **✅ 0 failures** |
 
 ### Load Test Benchmarks
 
@@ -308,7 +312,7 @@ Shard dist:  1000 / 1000 / 1000 across 3 shards (perfect even split)
 ### Running the Tests
 
 ```bash
-# Full master suite (all 171 tests)
+# Full master suite (all 184 tests)
 mvn test -Dtest=ShardingTestSuite
 
 # Unit tests only (49 tests)
@@ -341,3 +345,99 @@ Once the application is running:
 |---|---|
 | `http://localhost:8080/swagger-ui.html` | Interactive Swagger UI |
 | `http://localhost:8080/v3/api-docs` | Raw OpenAPI JSON spec |
+
+---
+
+## Idempotent POST Requests
+
+The `POST /api/orders` endpoint supports **idempotency keys**, preventing duplicate order creation when clients retry requests due to network failures, timeouts, or client-side bugs.
+
+### How It Works
+
+1. **First request** — client sends a unique `Idempotency-Key` header:
+   - A new order is created and saved.
+   - An `IdempotencyRecord` (key → orderId, TTL 24h) is persisted on the same shard.
+   - Response: **HTTP 201 Created**.
+
+2. **Retry with same key** (within 24 hours):
+   - The existing `IdempotencyRecord` is found.
+   - The original order is returned unchanged — no duplicate created.
+   - Response: **HTTP 200 OK** (replay signal).
+
+3. **No key provided** — normal request with no idempotency guarantee; always creates a new order → **HTTP 201**.
+
+4. **Expired key** (after 24h TTL) — treated as a brand-new request → creates a new order → **HTTP 201**.
+
+5. **Invalid key** (blank, or longer than 64 chars) → **HTTP 400 Bad Request**.
+
+### Example cURL
+
+```bash
+# First request — creates the order (201 Created)
+curl -X POST http://localhost:8080/api/orders \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: order-req-abc-001" \
+  -d '{"userId": 101, "amount": 250.00}'
+# → 201 Created  { "orderId": 42, "status": "PENDING", ... }
+
+# Retry with the SAME key — returns the SAME order (200 OK, no duplicate)
+curl -X POST http://localhost:8080/api/orders \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: order-req-abc-001" \
+  -d '{"userId": 101, "amount": 250.00}'
+# → 200 OK  { "orderId": 42, "status": "PENDING", ... }  ← same order
+
+# Request WITHOUT a key — always creates a new order (201 Created)
+curl -X POST http://localhost:8080/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 101, "amount": 250.00}'
+# → 201 Created  { "orderId": 43, "status": "PENDING", ... }
+```
+
+### Key Rules
+
+| Rule | Detail |
+|---|---|
+| Header name | `Idempotency-Key` |
+| Uniqueness scope | Per shard (keys are stored on the order's shard) |
+| TTL | 24 hours (configurable via `idempotency.ttl-hours` in `application.yml`) |
+| Max key length | 64 characters |
+| Storage | `idempotency_records` table (same shard, same datasource as the order) |
+| 201 vs 200 | `201 Created` for new orders; `200 OK` for replays |
+
+### Schema
+
+```sql
+-- Column added to orders table
+ALTER TABLE orders ADD COLUMN idempotency_key VARCHAR(64);
+CREATE UNIQUE INDEX uidx_idempotency_key ON orders(idempotency_key)
+    WHERE idempotency_key IS NOT NULL;
+
+-- New table for idempotency tracking
+CREATE TABLE IF NOT EXISTS idempotency_records (
+    idempotency_key VARCHAR(64) PRIMARY KEY,
+    user_id         BIGINT        NOT NULL,
+    order_id        BIGINT        NOT NULL,
+    created_at      TIMESTAMP     NOT NULL,
+    expires_at      TIMESTAMP     NOT NULL
+);
+```
+
+### Idempotency Tests
+
+```
+IdempotencyTest  (13 tests)
+├── newRequest_noKey_createsOrder              → 201, order saved
+├── newRequest_withKey_createsOrder            → 201, record saved
+├── duplicateKey_returnsOriginalOrder          → 200, no duplicate
+├── expiredKey_createsNewOrder                 → 201, new order
+├── validateKey_blank_throwsException          → 400
+├── validateKey_tooLong_throwsException        → 400
+├── validateKey_null_throwsException           → 400
+├── validateKey_valid_noException              → passes
+├── findExistingOrder_noRecord_returnsEmpty    → empty Optional
+├── findExistingOrder_notExpired_returnsOrder  → populated Optional
+├── findExistingOrder_expired_returnsEmpty     → empty Optional
+├── saveRecord_persistsWithCorrectFields       → record saved
+└── orderResult_isReplay_flagCorrect           → wrapper flag accurate
+```

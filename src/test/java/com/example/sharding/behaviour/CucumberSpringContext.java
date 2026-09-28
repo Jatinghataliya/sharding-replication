@@ -3,6 +3,8 @@ package com.example.sharding.behaviour;
 import com.example.sharding.aspect.TransactionRoutingAspect;
 import com.example.sharding.context.ShardContextHolder;
 import com.example.sharding.entity.Order;
+import com.example.sharding.idempotency.IdempotencyService;
+import com.example.sharding.repository.IdempotencyRepository;
 import com.example.sharding.repository.OrderRepository;
 import com.example.sharding.service.OrderService;
 import io.cucumber.spring.CucumberContextConfiguration;
@@ -46,6 +48,21 @@ public class CucumberSpringContext {
         @Bean
         public OrderRepository orderRepository() {
             return Mockito.mock(OrderRepository.class);
+        }
+
+        @Bean
+        public IdempotencyRepository idempotencyRepository() {
+            IdempotencyRepository mock = Mockito.mock(IdempotencyRepository.class);
+            // Default: no existing idempotency records
+            when(mock.findById(any())).thenReturn(java.util.Optional.empty());
+            when(mock.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            return mock;
+        }
+
+        @Bean
+        public IdempotencyService idempotencyService(IdempotencyRepository idempotencyRepository,
+                                                     OrderRepository orderRepository) {
+            return new IdempotencyService(idempotencyRepository, orderRepository);
         }
     }
 

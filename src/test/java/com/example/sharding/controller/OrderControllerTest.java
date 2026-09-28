@@ -2,6 +2,7 @@ package com.example.sharding.controller;
 
 import com.example.sharding.entity.Order;
 import com.example.sharding.service.OrderService;
+import com.example.sharding.service.OrderService.OrderResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,7 +47,8 @@ public class OrderControllerTest {
     @DisplayName("POST /api/orders → 201 with saved order in body")
     void createOrder_returns201() throws Exception {
         Order saved = buildOrder(1L, 101L, new BigDecimal("250.00"), "PENDING");
-        when(orderService.createOrder(eq(101L), any(BigDecimal.class))).thenReturn(saved);
+        when(orderService.createOrder(eq(101L), any(BigDecimal.class), any()))
+                .thenReturn(OrderResult.created(saved));
 
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)

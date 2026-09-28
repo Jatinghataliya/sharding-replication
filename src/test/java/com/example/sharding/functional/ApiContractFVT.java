@@ -4,6 +4,7 @@ import com.example.sharding.controller.GlobalExceptionHandler;
 import com.example.sharding.controller.OrderController;
 import com.example.sharding.entity.Order;
 import com.example.sharding.service.OrderService;
+import com.example.sharding.service.OrderService.OrderResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +16,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -47,7 +47,8 @@ public class ApiContractFVT {
     @DisplayName("FVT-AC-01: POST /api/orders returns 201 with complete order JSON body")
     void createOrder_returns201WithBody() throws Exception {
         Order saved = buildOrder(1L, 101L, 250.00, "PENDING");
-        when(orderService.createOrder(eq(101L), any(BigDecimal.class))).thenReturn(saved);
+        when(orderService.createOrder(eq(101L), any(BigDecimal.class), any()))
+                .thenReturn(OrderResult.created(saved));
 
         mockMvc.perform(post("/api/orders")
                 .contentType(MediaType.APPLICATION_JSON)

@@ -79,7 +79,7 @@ public class ShardRoutingFVT extends FunctionalTestBase {
     })
     @DisplayName("FVT-SR-03: createOrder sets the correct shard index in context")
     void createOrder_setsCorrectShardInContext(long userId, int expectedShard) {
-        orderService.createOrder(userId, BigDecimal.TEN);
+        orderService.createOrder(userId, BigDecimal.TEN, null);
         assertThat(capturedShard).isEqualTo(expectedShard);
     }
 
@@ -88,7 +88,7 @@ public class ShardRoutingFVT extends FunctionalTestBase {
     @Test
     @DisplayName("FVT-SR-04: ShardContextHolder is fully cleared after createOrder completes")
     void contextCleared_afterCreateOrder() {
-        orderService.createOrder(101L, BigDecimal.TEN);
+        orderService.createOrder(101L, BigDecimal.TEN, null);
 
         // AOP clears context after the transactional method returns
         assertThat(ShardContextHolder.getShard()).isNull();
@@ -117,7 +117,7 @@ public class ShardRoutingFVT extends FunctionalTestBase {
         int[] expectedShards = {0, 1, 2};
 
         for (int i = 0; i < users.length; i++) {
-            orderService.createOrder(users[i], BigDecimal.TEN);
+            orderService.createOrder(users[i], BigDecimal.TEN, null);
             assertThat(capturedShard)
                 .as("After call for userId=%d", users[i])
                 .isEqualTo(expectedShards[i]);

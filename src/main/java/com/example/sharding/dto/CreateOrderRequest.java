@@ -7,10 +7,12 @@ import java.math.BigDecimal;
 @Schema(description = "Request body for creating a new order")
 public class CreateOrderRequest {
 
-    @Schema(description = "ID of the user placing the order (used as the shard key)", example = "101", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "ID of the user placing the order (used as the shard key)",
+            example = "101", requiredMode = Schema.RequiredMode.REQUIRED)
     private Long userId;
 
-    @Schema(description = "Order amount in decimal", example = "250.00", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "Order amount in decimal",
+            example = "250.00", requiredMode = Schema.RequiredMode.REQUIRED)
     private BigDecimal amount;
 
     public CreateOrderRequest() {}
@@ -20,9 +22,9 @@ public class CreateOrderRequest {
         this.amount = amount;
     }
 
-    public Long getUserId() { return userId; }
+    public Long getUserId()    { return userId; }
     public void setUserId(Long userId) { this.userId = userId; }
 
-    public BigDecimal getAmount() { return amount; }
-    public void setAmount(BigDecimal amount) { this.amount = amount; }
+    public BigDecimal getAmount()       { return amount; }
+    public void setAmount(BigDecimal a) { this.amount = a; }
 }

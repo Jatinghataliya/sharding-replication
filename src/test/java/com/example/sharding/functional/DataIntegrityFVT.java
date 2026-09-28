@@ -33,7 +33,7 @@ public class DataIntegrityFVT extends FunctionalTestBase {
     @Test
     @DisplayName("FVT-DI-01: Amount 0.01 (minimum currency unit) is stored exactly")
     void amount_minimumPrecision_preserved() {
-        Order result = orderService.createOrder(101L, new BigDecimal("0.01"));
+        Order result = orderService.createOrder(101L, new BigDecimal("0.01"), null).getOrder();
         assertThat(result.getAmount()).isEqualByComparingTo(new BigDecimal("0.01"));
     }
 
@@ -42,7 +42,7 @@ public class DataIntegrityFVT extends FunctionalTestBase {
     @Test
     @DisplayName("FVT-DI-02: Large amount 99999999.99 is stored without truncation")
     void amount_largePrecision_preserved() {
-        Order result = orderService.createOrder(101L, new BigDecimal("99999999.99"));
+        Order result = orderService.createOrder(101L, new BigDecimal("99999999.99"), null).getOrder();
         assertThat(result.getAmount()).isEqualByComparingTo(new BigDecimal("99999999.99"));
     }
 
@@ -51,7 +51,7 @@ public class DataIntegrityFVT extends FunctionalTestBase {
     @Test
     @DisplayName("FVT-DI-03: Newly created order always has exactly the status string 'PENDING'")
     void newOrder_statusIsExactlyPending() {
-        Order result = orderService.createOrder(101L, BigDecimal.TEN);
+        Order result = orderService.createOrder(101L, BigDecimal.TEN, null).getOrder();
         assertThat(result.getStatus())
             .isEqualTo("PENDING")
             .isNotEqualTo("pending")    // case-sensitive check
@@ -64,7 +64,7 @@ public class DataIntegrityFVT extends FunctionalTestBase {
     @DisplayName("FVT-DI-04: userId passed to createOrder is bound exactly to the order's userId field")
     void userId_boundCorrectlyToOrder() {
         long userId = 987654321L;
-        Order result = orderService.createOrder(userId, BigDecimal.ONE);
+        Order result = orderService.createOrder(userId, BigDecimal.ONE, null).getOrder();
         assertThat(result.getUserId()).isEqualTo(userId);
     }
 
@@ -74,7 +74,7 @@ public class DataIntegrityFVT extends FunctionalTestBase {
     @DisplayName("FVT-DI-05: createdAt is populated and is not in the future")
     void createdAt_isPopulatedAndNotFuture() {
         LocalDateTime before = LocalDateTime.now().minusSeconds(1);
-        Order result = orderService.createOrder(101L, BigDecimal.TEN);
+        Order result = orderService.createOrder(101L, BigDecimal.TEN, null).getOrder();
         LocalDateTime after  = LocalDateTime.now().plusSeconds(1);
 
         assertThat(result.getCreatedAt())
@@ -111,8 +111,8 @@ public class DataIntegrityFVT extends FunctionalTestBase {
     @Test
     @DisplayName("FVT-DI-07: Multiple orders for the same user have distinct order IDs")
     void multipleOrders_haveDistinctIds() {
-        Order o1 = orderService.createOrder(101L, new BigDecimal("10.00"));
-        Order o2 = orderService.createOrder(101L, new BigDecimal("20.00"));
+        Order o1 = orderService.createOrder(101L, new BigDecimal("10.00"), null).getOrder();
+        Order o2 = orderService.createOrder(101L, new BigDecimal("20.00"), null).getOrder();
         assertThat(o1.getOrderId()).isNotEqualTo(o2.getOrderId());
     }
 
@@ -132,7 +132,7 @@ public class DataIntegrityFVT extends FunctionalTestBase {
     @DisplayName("FVT-DI-09: Zero-amount order is accepted without error")
     void zeroAmountOrder_isAccepted() {
         assertThatCode(() ->
-            orderService.createOrder(101L, BigDecimal.ZERO)
+            orderService.createOrder(101L, BigDecimal.ZERO, null)
         ).doesNotThrowAnyException();
     }
 

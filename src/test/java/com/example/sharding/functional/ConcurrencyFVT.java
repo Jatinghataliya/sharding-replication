@@ -45,7 +45,7 @@ public class ConcurrencyFVT extends FunctionalTestBase {
             final long userId = i;
             pool.submit(() -> {
                 try {
-                    orderService.createOrder(userId, BigDecimal.TEN);
+                    orderService.createOrder(userId, BigDecimal.TEN, null);
                     success.incrementAndGet();
                 } catch (Exception e) {
                     failure.incrementAndGet();
@@ -197,7 +197,7 @@ public class ConcurrencyFVT extends FunctionalTestBase {
                 try {
                     orderService.createOrder(
                         ThreadLocalRandom.current().nextLong(0, 1000),
-                        BigDecimal.TEN);
+                        BigDecimal.TEN, null);
                 } finally {
                     latch.countDown();
                 }
@@ -208,7 +208,7 @@ public class ConcurrencyFVT extends FunctionalTestBase {
         pool.shutdown();
 
         // After all concurrent work, the main thread can still make a clean call
-        orderService.createOrder(1L, BigDecimal.ONE);
+        orderService.createOrder(1L, BigDecimal.ONE, null);
         assertThat(ShardContextHolder.getShard()).isNull();
     }
 }

@@ -12,14 +12,14 @@ import java.util.Map;
 /**
  * Global exception handler.
  * <ul>
- *   <li>Spring's own 400-class exceptions are left to the default resolver.</li>
- *   <li>Unhandled {@link RuntimeException} → structured JSON 500.</li>
+ *   <li>400 Bad Request — missing body / param, invalid idempotency key</li>
+ *   <li>500 Internal Server Error — unhandled RuntimeException</li>
  * </ul>
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    /** Let Spring's default resolver handle missing-body / missing-param 400s. */
+    /** Missing request body or missing required query param → 400. */
     @ExceptionHandler({
         HttpMessageNotReadableException.class,
         MissingServletRequestParameterException.class
@@ -30,6 +30,18 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", ex.getMessage()));
     }
 
+    /**
+     * Invalid idempotency key (blank, too long) → 400.
+     * Thrown by {@link com.example.sharding.idempotency.IdempotencyService#validateKey}.
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", ex.getMessage()));
+    }
+
+    /** All other unhandled runtime exceptions → 500. */
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex) {
         return ResponseEntity

@@ -56,7 +56,7 @@ public class OrderSteps {
         ctx.stubFindByIdCapturingContext(existing.getOrderId(), existing);
         ctx.stubFindByUserIdCapturingContext(userId, List.of(existing));
         // persist it through the service so ctx.lastCreatedOrder is set
-        ctx.lastCreatedOrder = ctx.orderService.createOrder(userId, BigDecimal.valueOf(amount));
+        ctx.lastCreatedOrder = ctx.orderService.createOrder(userId, BigDecimal.valueOf(amount), null).getOrder();
     }
 
     // ── When steps ────────────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ public class OrderSteps {
     public void iCreateAnOrderForUserWithAmount(long userId, double amount) {
         ctx.thrownException = null;
         try {
-            ctx.lastCreatedOrder = ctx.orderService.createOrder(userId, BigDecimal.valueOf(amount));
+            ctx.lastCreatedOrder = ctx.orderService.createOrder(userId, BigDecimal.valueOf(amount), null).getOrder();
             ctx.allCreatedOrders.add(ctx.lastCreatedOrder);
         } catch (Exception e) {
             ctx.thrownException = e;

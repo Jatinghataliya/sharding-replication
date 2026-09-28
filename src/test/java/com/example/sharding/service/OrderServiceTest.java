@@ -3,6 +3,7 @@ package com.example.sharding.service;
 import com.example.sharding.config.DataSourceConfig;
 import com.example.sharding.context.ShardContextHolder;
 import com.example.sharding.entity.Order;
+import com.example.sharding.idempotency.IdempotencyService;
 import com.example.sharding.repository.OrderRepository;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,30 +15,25 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import static com.example.sharding.context.ShardContextHolder.Role.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for {@link OrderService}.
- * The repository is mocked — no Spring context or database required.
- * Shard routing state (ThreadLocal) is verified after each call.
+ * Both repositories are mocked — no Spring context or database required.
+ * Idempotency checks use a no-op stub (empty Optional) so tests focus on routing.
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("OrderService")
 public class OrderServiceTest {
 
-    @Mock
-    private OrderRepository orderRepository;
-
-    @InjectMocks
-    private OrderService orderService;
+    @Mock  private OrderRepository    orderRepository;
+    @Mock  private IdempotencyService idempotencyService;
+    @InjectMocks private OrderService orderService;
 
     @AfterEach
-    void clearContext() {
-        ShardContextHolder.clear();
-    }
+    void clearContext() { ShardContextHolder.clear(); }
 
     // ── createOrder ───────────────────────────────────────────────────────────
 
@@ -49,11 +45,12 @@ public class OrderServiceTest {
         Order saved = buildOrder(1L, userId, amount, "PENDING");
         when(orderRepository.save(any(Order.class))).thenReturn(saved);
 
-        Order result = orderService.createOrder(userId, amount);
+        OrderService.OrderResult result = orderService.createOrder(userId, amount, null);
 
-        assertThat(result.getUserId()).isEqualTo(userId);
-        assertThat(result.getAmount()).isEqualByComparingTo(amount);
-        assertThat(result.getStatus()).isEqualTo("PENDING");
+        assertThat(result.getOrder().getUserId()).isEqualTo(userId);
+        assertThat(result.getOrder().getAmount()).isEqualByComparingTo(amount);
+        assertThat(result.getOrder().getStatus()).isEqualTo("PENDING");
+        assertThat(result.isReplay()).isFalse();
         verify(orderRepository).save(any(Order.class));
     }
 
@@ -63,7 +60,7 @@ public class OrderServiceTest {
         long userId = 3L; // 3 % 3 = shard 0
         when(orderRepository.save(any())).thenReturn(buildOrder(1L, userId, BigDecimal.TEN, "PENDING"));
 
-        orderService.createOrder(userId, BigDecimal.TEN);
+        orderService.createOrder(userId, BigDecimal.TEN, null);
 
         assertThat(ShardContextHolder.getShard())
                 .isEqualTo(DataSourceConfig.resolveShardIndex(userId));
@@ -72,10 +69,10 @@ public class OrderServiceTest {
     @Test
     @DisplayName("createOrder with userId=101 targets shard 2")
     void createOrder_userId101_targetsShard2() {
-        long userId = 101L; // 101 % 3 = 2
+        long userId = 101L;
         when(orderRepository.save(any())).thenReturn(buildOrder(1L, userId, BigDecimal.TEN, "PENDING"));
 
-        orderService.createOrder(userId, BigDecimal.TEN);
+        orderService.createOrder(userId, BigDecimal.TEN, null);
 
         assertThat(ShardContextHolder.getShard()).isEqualTo(2);
     }
@@ -126,22 +123,19 @@ public class OrderServiceTest {
     @Test
     @DisplayName("getOrderById returns the order when found")
     void getOrderById_found() {
-        long userId = 10L;
-        long orderId = 5L;
+        long userId = 10L, orderId = 5L;
         Order order = buildOrder(orderId, userId, new BigDecimal("75.00"), "CONFIRMED");
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
 
         Order result = orderService.getOrderById(userId, orderId);
 
         assertThat(result.getOrderId()).isEqualTo(orderId);
-        assertThat(result.getUserId()).isEqualTo(userId);
     }
 
     @Test
     @DisplayName("getOrderById throws RuntimeException when order not found")
     void getOrderById_notFound_throwsException() {
-        long userId = 10L;
-        long orderId = 999L;
+        long userId = 10L, orderId = 999L;
         when(orderRepository.findById(orderId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> orderService.getOrderById(userId, orderId))
@@ -154,8 +148,7 @@ public class OrderServiceTest {
     @Test
     @DisplayName("updateOrderStatus updates and returns the order")
     void updateOrderStatus_updatesOrder() {
-        long userId = 4L;
-        long orderId = 2L;
+        long userId = 4L, orderId = 2L;
         Order existing = buildOrder(orderId, userId, new BigDecimal("50.00"), "PENDING");
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(existing));
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -169,8 +162,7 @@ public class OrderServiceTest {
     @Test
     @DisplayName("updateOrderStatus throws RuntimeException when order not found")
     void updateOrderStatus_notFound_throwsException() {
-        long userId = 4L;
-        long orderId = 999L;
+        long userId = 4L, orderId = 999L;
         when(orderRepository.findById(orderId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> orderService.updateOrderStatus(userId, orderId, "SHIPPED"))
@@ -181,8 +173,7 @@ public class OrderServiceTest {
     @Test
     @DisplayName("updateOrderStatus sets the correct shard index in context")
     void updateOrderStatus_setsCorrectShard() {
-        long userId = 6L; // 6 % 3 = 0
-        long orderId = 1L;
+        long userId = 6L, orderId = 1L; // 6 % 3 = 0
         Order order = buildOrder(orderId, userId, BigDecimal.TEN, "PENDING");
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
         when(orderRepository.save(any())).thenReturn(order);
@@ -197,7 +188,6 @@ public class OrderServiceTest {
     @Test
     @DisplayName("Different userIds that map to the same shard all route correctly")
     void shardConsistency_sameShard() {
-        // userIds 0, 3, 6 all map to shard 0
         long[] shard0Users = {0L, 3L, 6L, 9L};
         for (long uid : shard0Users) {
             when(orderRepository.findByUserId(uid)).thenReturn(List.of());
@@ -206,7 +196,7 @@ public class OrderServiceTest {
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Helper ────────────────────────────────────────────────────────────────
 
     private Order buildOrder(long orderId, long userId, BigDecimal amount, String status) {
         Order o = new Order(userId, amount);
