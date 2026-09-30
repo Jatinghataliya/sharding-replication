@@ -2,9 +2,12 @@ package com.example.sharding.service;
 
 import com.example.sharding.config.DataSourceConfig;
 import com.example.sharding.context.ShardContextHolder;
+import com.example.sharding.context.ShardContextHolder.Role;
 import com.example.sharding.entity.Order;
+import com.example.sharding.exception.OrderNotFoundException;
 import com.example.sharding.idempotency.IdempotencyService;
 import com.example.sharding.repository.OrderRepository;
+import com.example.sharding.resilience.ShardCircuitBreakerService;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
@@ -14,23 +17,39 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for {@link OrderService}.
- * Both repositories are mocked — no Spring context or database required.
- * Idempotency checks use a no-op stub (empty Optional) so tests focus on routing.
+ * All dependencies are mocked — no Spring context or database required.
+ * ShardCircuitBreakerService is stubbed to be a transparent pass-through
+ * so tests focus on business logic / routing, not circuit-breaker mechanics.
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("OrderService")
 public class OrderServiceTest {
 
-    @Mock  private OrderRepository    orderRepository;
-    @Mock  private IdempotencyService idempotencyService;
-    @InjectMocks private OrderService orderService;
+    @Mock  private OrderRepository            orderRepository;
+    @Mock  private IdempotencyService         idempotencyService;
+    @Mock  private ShardCircuitBreakerService circuitBreakerService;
+    @InjectMocks private OrderService         orderService;
+
+    /** Make the circuit breaker a transparent pass-through for all unit tests. */
+    @BeforeEach
+    @SuppressWarnings("unchecked")
+    void stubCircuitBreaker() throws Exception {
+        when(circuitBreakerService.execute(anyInt(), any(Role.class), any(Callable.class)))
+                .thenAnswer(inv -> {
+                    Callable<?> op = inv.getArgument(2);
+                    return op.call();
+                });
+    }
 
     @AfterEach
     void clearContext() { ShardContextHolder.clear(); }
@@ -133,13 +152,13 @@ public class OrderServiceTest {
     }
 
     @Test
-    @DisplayName("getOrderById throws RuntimeException when order not found")
+    @DisplayName("getOrderById throws OrderNotFoundException when order not found")
     void getOrderById_notFound_throwsException() {
         long userId = 10L, orderId = 999L;
         when(orderRepository.findById(orderId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> orderService.getOrderById(userId, orderId))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(OrderNotFoundException.class)
                 .hasMessageContaining("Order not found");
     }
 
@@ -160,13 +179,13 @@ public class OrderServiceTest {
     }
 
     @Test
-    @DisplayName("updateOrderStatus throws RuntimeException when order not found")
+    @DisplayName("updateOrderStatus throws OrderNotFoundException when order not found")
     void updateOrderStatus_notFound_throwsException() {
         long userId = 4L, orderId = 999L;
         when(orderRepository.findById(orderId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> orderService.updateOrderStatus(userId, orderId, "SHIPPED"))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(OrderNotFoundException.class)
                 .hasMessageContaining("Order not found");
     }
 

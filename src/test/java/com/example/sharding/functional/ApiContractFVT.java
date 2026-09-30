@@ -3,6 +3,7 @@ package com.example.sharding.functional;
 import com.example.sharding.controller.GlobalExceptionHandler;
 import com.example.sharding.controller.OrderController;
 import com.example.sharding.entity.Order;
+import com.example.sharding.exception.OrderNotFoundException;
 import com.example.sharding.service.OrderService;
 import com.example.sharding.service.OrderService.OrderResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -127,16 +128,16 @@ public class ApiContractFVT {
             .andExpect(status().isBadRequest());
     }
 
-    // ── FVT-AC-07: GET /api/orders/{id} not found → 500 with error field ──────
+    // ── FVT-AC-07: GET /api/orders/{id} not found → 404 with error field ──────
 
     @Test
-    @DisplayName("FVT-AC-07: GET /api/orders/{id} for non-existent order returns 500 with error JSON")
-    void getOrderById_notFound_returns500WithErrorJson() throws Exception {
+    @DisplayName("FVT-AC-07: GET /api/orders/{id} for non-existent order returns 404 with error JSON")
+    void getOrderById_notFound_returns404WithErrorJson() throws Exception {
         when(orderService.getOrderById(anyLong(), anyLong()))
-            .thenThrow(new RuntimeException("Order not found: id=999 on shard=2"));
+            .thenThrow(new OrderNotFoundException(999L, 2));
 
         mockMvc.perform(get("/api/orders/999").param("userId", "101"))
-            .andExpect(status().isInternalServerError())
+            .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.error").value(containsString("Order not found")));
     }
 

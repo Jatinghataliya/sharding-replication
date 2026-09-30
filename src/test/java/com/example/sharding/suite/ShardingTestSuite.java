@@ -3,8 +3,6 @@ package com.example.sharding.suite;
 import com.example.sharding.aspect.TransactionRoutingAspectTest;
 import com.example.sharding.behaviour.BehaviourTestSuite;
 import com.example.sharding.config.DataSourceConfigTest;
-import com.example.sharding.suite.FunctionalVerificationSuite;
-import com.example.sharding.suite.IdempotencyTestSuite;
 import com.example.sharding.context.DataSourceKeyTest;
 import com.example.sharding.context.ShardContextHolderTest;
 import com.example.sharding.controller.OrderControllerTest;
@@ -94,7 +92,10 @@ import org.junit.platform.suite.api.SuiteDisplayName;
     IdempotencyTestSuite.class,
 
     // ── Group 7: Cross-Shard Query Tests ──────────────────────────────
-    CrossShardQuerySuite.class
+    CrossShardQuerySuite.class,
+
+    // ── Group 8: Circuit Breaker + Retry Tests ────────────────────────
+    CircuitBreakerSuite.class
 })
 public class ShardingTestSuite {
     // Suite marker class — no body needed

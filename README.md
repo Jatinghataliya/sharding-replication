@@ -274,7 +274,7 @@ Request → AOP detects @Transactional(readOnly)
 ### Suite Structure
 
 ```
-ShardingTestSuite  (184 tests — master suite)
+ShardingTestSuite  (229 tests — master suite)
 │
 ├── UnitTestSuite  (49 tests)
 │   ├── ShardContextHolderTest       8  ThreadLocal isolation, defaults, cross-thread
@@ -302,8 +302,18 @@ ShardingTestSuite  (184 tests — master suite)
 │   ├── DataIntegrityFVT            10  amount precision, timestamps, immutability
 │   └── ConcurrencyFVT               6  thread safety, context isolation under load
 │
-└── IdempotencyTestSuite  (13 tests)
-    └── IdempotencyTest             13  key validation, replay detection, TTL expiry
+├── IdempotencyTestSuite  (13 tests)
+│   └── IdempotencyTest             13  key validation, replay detection, TTL expiry
+│
+├── CrossShardQuerySuite  (17 tests)
+│   ├── CrossShardQueryServiceTest   7  unit: fan-out, merge, partial failure
+│   ├── CrossShardFVT                5  FVT: result shape, sorting, degraded flag
+│   └── AdminApiContractFVT          5  HTTP: /api/admin/orders endpoints
+│
+└── CircuitBreakerSuite  (28 tests)
+    ├── CircuitBreakerTest          13  unit: CLOSED→OPEN→HALF_OPEN, retry, isolation
+    ├── CircuitBreakerFVT            7  FVT: through OrderService, ignored exceptions
+    └── CircuitBreakerActuatorTest   8  HTTP: 503+Retry-After, 404 not-found contract
 ```
 
 ### Test Results (last run)
@@ -325,7 +335,13 @@ ShardingTestSuite  (184 tests — master suite)
 | `DataIntegrityFVT` | FVT | 10 | ✅ |
 | `ConcurrencyFVT` | FVT | 6 | ✅ |
 | `IdempotencyTest` | Idempotency | 13 | ✅ |
-| **Total** | | **184** | **✅ 0 failures** |
+| `CrossShardQueryServiceTest` | Cross-shard | 7 | ✅ |
+| `CrossShardFVT` | Cross-shard | 5 | ✅ |
+| `AdminApiContractFVT` | Cross-shard | 5 | ✅ |
+| `CircuitBreakerTest` | Resilience | 13 | ✅ |
+| `CircuitBreakerFVT` | Resilience | 7 | ✅ |
+| `CircuitBreakerActuatorTest` | Resilience | 8 | ✅ |
+| **Total** | | **229** | **✅ 0 failures** |
 
 ### Load Test Benchmarks
 
@@ -339,7 +355,7 @@ Shard dist:  1000 / 1000 / 1000 across 3 shards (perfect even split)
 ### Running the Tests
 
 ```bash
-# Full master suite (all 184 tests)
+# Full master suite (all 229 tests)
 mvn test -Dtest=ShardingTestSuite
 
 # Unit tests only (49 tests)
@@ -356,6 +372,9 @@ mvn test -Dtest=BehaviourTestSuite
 
 # Functional Verification Tests (66 tests)
 mvn test -Dtest=FunctionalVerificationSuite
+
+# Circuit Breaker + Retry tests (28 tests)
+mvn test -Dtest=CircuitBreakerSuite
 
 # JMH performance benchmarks (run separately — ~60s)
 mvn test -Dtest=PerformanceTest -DfailIfNoTests=false
@@ -467,4 +486,129 @@ IdempotencyTest  (13 tests)
 ├── findExistingOrder_expired_returnsEmpty     → empty Optional
 ├── saveRecord_persistsWithCorrectFields       → record saved
 └── orderResult_isReplay_flagCorrect           → wrapper flag accurate
+```
+
+---
+
+## Circuit Breaker + Retry (Resilience4j)
+
+Every shard database call is wrapped in a per-shard **circuit breaker** and **retry** using Resilience4j.
+This provides fail-fast protection when a PostgreSQL node is unreachable, prevents cascading failures,
+and gives the system time to recover.
+
+### Architecture
+
+```
+OrderService.createOrder()
+    │
+    ▼
+ShardCircuitBreakerService.execute(shard=2, role=PRIMARY, () → repo.save(order))
+    │
+    ├── [CLOSED]  → Retry(maxAttempts=3, backoff 500ms→1s→2s) → repo.save()
+    │                     ↓ success                  ↓ transient fail
+    │                  return result             retry up to 3×
+    │                                                 ↓ exhausted
+    │                              count failure in sliding window (10 calls)
+    │                              if failureRate ≥ 50% → trip OPEN
+    │
+    └── [OPEN]    → CallNotPermittedException → GlobalExceptionHandler → 503 + Retry-After: 30
+```
+
+### 6 Independent Breakers
+
+Each shard/role pair has its own named `CircuitBreaker` and `Retry` instance:
+
+| Name | Protects |
+|---|---|
+| `shard0-primary` | writes to shard 0 |
+| `shard0-replica` | reads from shard 0 |
+| `shard1-primary` | writes to shard 1 |
+| `shard1-replica` | reads from shard 1 |
+| `shard2-primary` | writes to shard 2 |
+| `shard2-replica` | reads from shard 2 |
+
+Tripping one breaker **does not affect** the others — shard isolation is preserved end-to-end.
+
+### Configuration (`application.yml`)
+
+```yaml
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10           # evaluate last 10 calls
+        failureRateThreshold: 50        # trip if ≥ 50% fail
+        waitDurationInOpenState: 30s    # stay OPEN for 30s before probing
+        permittedNumberOfCallsInHalfOpenState: 3
+        ignoreExceptions:
+          - OrderNotFoundException      # "not found" is NOT an infra fault
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 500ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2  # 500ms → 1s → 2s
+        retryExceptions:
+          - java.sql.SQLException
+          - TransientDataAccessException
+```
+
+### HTTP Behaviour
+
+| Condition | HTTP Status | Extra Header |
+|---|---|---|
+| Normal success | 200 / 201 | — |
+| Order not found (ignored by CB) | **404 Not Found** | — |
+| Circuit breaker OPEN | **503 Service Unavailable** | `Retry-After: 30` |
+| Unhandled exception | 500 Internal Server Error | — |
+
+### Example: 503 response
+
+```bash
+# When shard2-primary circuit is OPEN:
+curl -X POST http://localhost:8080/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 101, "amount": 50.00}'
+
+# HTTP/1.1 503 Service Unavailable
+# Retry-After: 30
+# {
+#   "error": "Shard is temporarily unavailable. Circuit breaker is OPEN.",
+#   "detail": "CircuitBreaker 'shard2-primary' is OPEN and does not permit further calls"
+# }
+```
+
+### Actuator Endpoints
+
+```bash
+# Circuit breaker states (requires running app)
+curl http://localhost:8080/actuator/circuitbreakers
+curl http://localhost:8080/actuator/circuitbreakerevents
+curl http://localhost:8080/actuator/health
+```
+
+### Circuit Breaker Tests
+
+```
+CircuitBreakerSuite  (28 tests)
+├── CircuitBreakerTest (13)     Unit — CLOSED/OPEN/HALF_OPEN transitions, name convention,
+│                               recovery probe calls, shard isolation, retry config access
+├── CircuitBreakerFVT (7)       FVT — through real OrderService with real CB:
+│   ├── FVT-CB-01  createOrder succeeds when CLOSED
+│   ├── FVT-CB-02  circuit trips OPEN after repeated save failures
+│   ├── FVT-CB-03  open circuit rejects without calling repository
+│   ├── FVT-CB-04  write circuit isolated from read circuit (same shard)
+│   ├── FVT-CB-05  shard2 trip does not affect shard0
+│   ├── FVT-CB-06  OrderNotFoundException does NOT count as CB failure
+│   └── FVT-CB-07  recovery OPEN → HALF_OPEN → CLOSED after probe calls
+└── CircuitBreakerActuatorTest (8)  HTTP — MockMvc contract:
+    ├── CB-HTTP-01  POST returns 503 when circuit OPEN
+    ├── CB-HTTP-02  503 body has 'error' and 'detail' fields
+    ├── CB-HTTP-03  Retry-After header is "30"
+    ├── CB-HTTP-04  GET /orders/{id} returns 404 when order not found
+    ├── CB-HTTP-05  404 error message includes the orderId
+    ├── CB-HTTP-06  GET /orders/{id} returns 503 when replica circuit OPEN
+    ├── CB-HTTP-07  unexpected RuntimeException still returns 500
+    └── CB-HTTP-08  PATCH /status returns 503 when primary circuit OPEN
 ```

@@ -2,10 +2,12 @@ package com.example.sharding.behaviour;
 
 import com.example.sharding.aspect.TransactionRoutingAspect;
 import com.example.sharding.context.ShardContextHolder;
+import com.example.sharding.context.ShardContextHolder.Role;
 import com.example.sharding.entity.Order;
 import com.example.sharding.idempotency.IdempotencyService;
 import com.example.sharding.repository.IdempotencyRepository;
 import com.example.sharding.repository.OrderRepository;
+import com.example.sharding.resilience.ShardCircuitBreakerService;
 import com.example.sharding.service.OrderService;
 import io.cucumber.spring.CucumberContextConfiguration;
 import org.mockito.Mockito;
@@ -19,8 +21,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.when;
 
 /**
@@ -63,6 +67,18 @@ public class CucumberSpringContext {
         public IdempotencyService idempotencyService(IdempotencyRepository idempotencyRepository,
                                                      OrderRepository orderRepository) {
             return new IdempotencyService(idempotencyRepository, orderRepository);
+        }
+
+        @Bean
+        @SuppressWarnings("unchecked")
+        public ShardCircuitBreakerService shardCircuitBreakerService() throws Exception {
+            ShardCircuitBreakerService mock = Mockito.mock(ShardCircuitBreakerService.class);
+            when(mock.execute(anyInt(), any(Role.class), any(Callable.class)))
+                    .thenAnswer(inv -> {
+                        Callable<?> op = inv.getArgument(2);
+                        return op.call();
+                    });
+            return mock;
         }
     }
 

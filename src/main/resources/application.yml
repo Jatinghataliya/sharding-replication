@@ -2,13 +2,6 @@ spring:
   application:
     name: sharding-replication
 
-idempotency:
-  ttl-hours: 24   # how long an Idempotency-Key is remembered (default 24 h)
-
-crossshard:
-  executor:
-    threads: 3    # thread pool size for parallel cross-shard fan-out
-
   jpa:
     hibernate:
       ddl-auto: none
@@ -36,8 +29,86 @@ springdoc:
     tags-sorter: alpha
     display-request-duration: true
 
+idempotency:
+  ttl-hours: 24   # how long an Idempotency-Key is remembered (default 24 h)
+
+crossshard:
+  executor:
+    threads: 3    # thread pool size for parallel cross-shard fan-out
+
+# ── Resilience4j — Circuit Breaker + Retry per shard ─────────────────────────
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        # Trip OPEN after 50% failures in a 10-call sliding window
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        # Wait 30 s in OPEN state before trying HALF_OPEN
+        waitDurationInOpenState: 30s
+        # Allow 3 calls in HALF_OPEN to test recovery
+        permittedNumberOfCallsInHalfOpenState: 3
+        # Automatic transition from OPEN → HALF_OPEN
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        # Ignore these exceptions (don't count as failures)
+        ignoreExceptions:
+          - java.lang.IllegalArgumentException
+          - com.example.sharding.exception.OrderNotFoundException
+        registerHealthIndicator: true
+    instances:
+      shard0-primary:
+        baseConfig: default
+      shard0-replica:
+        baseConfig: default
+      shard1-primary:
+        baseConfig: default
+      shard1-replica:
+        baseConfig: default
+      shard2-primary:
+        baseConfig: default
+      shard2-replica:
+        baseConfig: default
+
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 500ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2   # 500ms → 1s → 2s
+        retryExceptions:
+          - java.sql.SQLException
+          - org.springframework.dao.TransientDataAccessException
+    instances:
+      shard0-primary:
+        baseConfig: default
+      shard0-replica:
+        baseConfig: default
+      shard1-primary:
+        baseConfig: default
+      shard1-replica:
+        baseConfig: default
+      shard2-primary:
+        baseConfig: default
+      shard2-replica:
+        baseConfig: default
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,circuitbreakers,circuitbreakerevents
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+
 logging:
   level:
     com.example: DEBUG
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql: TRACE
+    io.github.resilience4j: DEBUG

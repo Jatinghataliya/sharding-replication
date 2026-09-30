@@ -2,10 +2,12 @@ package com.example.sharding.load;
 
 import com.example.sharding.config.DataSourceConfig;
 import com.example.sharding.context.ShardContextHolder;
+import com.example.sharding.context.ShardContextHolder.Role;
 import com.example.sharding.entity.Order;
 import com.example.sharding.idempotency.IdempotencyService;
 import com.example.sharding.repository.IdempotencyRepository;
 import com.example.sharding.repository.OrderRepository;
+import com.example.sharding.resilience.ShardCircuitBreakerService;
 import com.example.sharding.service.OrderService;
 import org.junit.jupiter.api.*;
 
@@ -16,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
@@ -32,17 +35,26 @@ import static org.mockito.Mockito.*;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class LoadTest {
 
-    private static OrderService          orderService;
-    private static OrderRepository       mockRepository;
-    private static IdempotencyRepository mockIdempotencyRepository;
-    private static IdempotencyService    idempotencyService;
+    private static OrderService              orderService;
+    private static OrderRepository           mockRepository;
+    private static IdempotencyRepository     mockIdempotencyRepository;
+    private static IdempotencyService        idempotencyService;
+    private static ShardCircuitBreakerService mockCircuitBreaker;
 
     @BeforeAll
-    static void setup() {
+    @SuppressWarnings("unchecked")
+    static void setup() throws Exception {
         mockRepository            = mock(OrderRepository.class);
         mockIdempotencyRepository = mock(IdempotencyRepository.class);
         idempotencyService        = new IdempotencyService(mockIdempotencyRepository, mockRepository);
-        orderService              = new OrderService(mockRepository, idempotencyService);
+        mockCircuitBreaker        = mock(ShardCircuitBreakerService.class);
+        // Transparent pass-through
+        when(mockCircuitBreaker.execute(anyInt(), any(Role.class), any()))
+                .thenAnswer(inv -> {
+                    java.util.concurrent.Callable<?> op = inv.getArgument(2);
+                    return op.call();
+                });
+        orderService              = new OrderService(mockRepository, idempotencyService, mockCircuitBreaker);
 
         // Stub save to return the passed order with a fake ID
         when(mockRepository.save(any(Order.class))).thenAnswer(inv -> {

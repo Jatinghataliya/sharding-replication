@@ -1,6 +1,7 @@
 package com.example.sharding.functional;
 
 import com.example.sharding.entity.Order;
+import com.example.sharding.exception.OrderNotFoundException;
 import org.junit.jupiter.api.*;
 
 import java.math.BigDecimal;
@@ -112,12 +113,12 @@ public class OrderLifecycleFVT extends FunctionalTestBase {
     // ── FVT-OL-06: getOrderById throws when order not found ──────────────────
 
     @Test
-    @DisplayName("FVT-OL-06: getOrderById throws RuntimeException with meaningful message when not found")
+    @DisplayName("FVT-OL-06: getOrderById throws OrderNotFoundException with meaningful message when not found")
     void getOrderById_notFound_throwsWithMessage() {
         stubFindByIdEmpty(999L);
 
         assertThatThrownBy(() -> orderService.getOrderById(101L, 999L))
-            .isInstanceOf(RuntimeException.class)
+            .isInstanceOf(OrderNotFoundException.class)
             .hasMessageContaining("Order not found")
             .hasMessageContaining("999");
     }
@@ -125,12 +126,12 @@ public class OrderLifecycleFVT extends FunctionalTestBase {
     // ── FVT-OL-07: updateOrderStatus throws when order not found ─────────────
 
     @Test
-    @DisplayName("FVT-OL-07: updateOrderStatus throws RuntimeException when order not found")
+    @DisplayName("FVT-OL-07: updateOrderStatus throws OrderNotFoundException when order not found")
     void updateOrderStatus_notFound_throwsWithMessage() {
         stubFindByIdEmpty(888L);
 
         assertThatThrownBy(() -> orderService.updateOrderStatus(101L, 888L, "SHIPPED"))
-            .isInstanceOf(RuntimeException.class)
+            .isInstanceOf(OrderNotFoundException.class)
             .hasMessageContaining("Order not found");
     }
 

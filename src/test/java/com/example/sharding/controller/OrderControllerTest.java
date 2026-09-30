@@ -1,6 +1,7 @@
 package com.example.sharding.controller;
 
 import com.example.sharding.entity.Order;
+import com.example.sharding.exception.OrderNotFoundException;
 import com.example.sharding.service.OrderService;
 import com.example.sharding.service.OrderService.OrderResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -117,14 +118,15 @@ public class OrderControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/orders/999?userId=101 → 500 when order not found")
-    void getOrderById_notFound_returns500() throws Exception {
+    @DisplayName("GET /api/orders/999?userId=101 → 404 when order not found")
+    void getOrderById_notFound_returns404() throws Exception {
         when(orderService.getOrderById(anyLong(), anyLong()))
-                .thenThrow(new RuntimeException("Order not found: id=999 on shard=2"));
+                .thenThrow(new OrderNotFoundException(999L, 2));
 
         mockMvc.perform(get("/api/orders/{orderId}", 999L)
                         .param("userId", "101"))
-                .andExpect(status().isInternalServerError());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value(containsString("Order not found")));
     }
 
     @Test
@@ -150,15 +152,16 @@ public class OrderControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /api/orders/999/status → 500 when order not found")
-    void updateStatus_notFound_returns500() throws Exception {
+    @DisplayName("PATCH /api/orders/999/status → 404 when order not found")
+    void updateStatus_notFound_returns404() throws Exception {
         when(orderService.updateOrderStatus(anyLong(), anyLong(), any()))
-                .thenThrow(new RuntimeException("Order not found: id=999"));
+                .thenThrow(new OrderNotFoundException(999L, 2));
 
         mockMvc.perform(patch("/api/orders/{orderId}/status", 999L)
                         .param("userId", "101")
                         .param("status", "CANCELLED"))
-                .andExpect(status().isInternalServerError());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value(containsString("Order not found")));
     }
 
     // ── GET /api/orders/shard-info ────────────────────────────────────────────

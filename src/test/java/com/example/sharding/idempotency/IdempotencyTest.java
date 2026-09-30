@@ -1,10 +1,12 @@
 package com.example.sharding.idempotency;
 
 import com.example.sharding.aspect.TransactionRoutingAspect;
+import com.example.sharding.context.ShardContextHolder.Role;
 import com.example.sharding.entity.IdempotencyRecord;
 import com.example.sharding.entity.Order;
 import com.example.sharding.repository.IdempotencyRepository;
 import com.example.sharding.repository.OrderRepository;
+import com.example.sharding.resilience.ShardCircuitBreakerService;
 import com.example.sharding.service.OrderService;
 import com.example.sharding.service.OrderService.OrderResult;
 import org.junit.jupiter.api.*;
@@ -21,9 +23,11 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 
 /**
@@ -45,8 +49,17 @@ public class IdempotencyTest {
     @EnableAspectJAutoProxy
     @Import({OrderService.class, TransactionRoutingAspect.class, IdempotencyService.class})
     static class Config {
-        @Bean OrderRepository orderRepository()       { return Mockito.mock(OrderRepository.class); }
-        @Bean IdempotencyRepository idempotencyRepository() { return Mockito.mock(IdempotencyRepository.class); }
+        @Bean public OrderRepository orderRepository()            { return Mockito.mock(OrderRepository.class); }
+        @Bean public IdempotencyRepository idempotencyRepository(){ return Mockito.mock(IdempotencyRepository.class); }
+
+        @Bean
+        @SuppressWarnings("unchecked")
+        public ShardCircuitBreakerService shardCircuitBreakerService() throws Exception {
+            ShardCircuitBreakerService mock = Mockito.mock(ShardCircuitBreakerService.class);
+            when(mock.execute(anyInt(), any(Role.class), any(Callable.class)))
+                    .thenAnswer(inv -> { Callable<?> op = inv.getArgument(2); return op.call(); });
+            return mock;
+        }
     }
 
     @Autowired OrderService          orderService;

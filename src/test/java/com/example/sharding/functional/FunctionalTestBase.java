@@ -2,10 +2,12 @@ package com.example.sharding.functional;
 
 import com.example.sharding.aspect.TransactionRoutingAspect;
 import com.example.sharding.context.ShardContextHolder;
+import com.example.sharding.context.ShardContextHolder.Role;
 import com.example.sharding.entity.Order;
 import com.example.sharding.idempotency.IdempotencyService;
 import com.example.sharding.repository.IdempotencyRepository;
 import com.example.sharding.repository.OrderRepository;
+import com.example.sharding.resilience.ShardCircuitBreakerService;
 import com.example.sharding.service.OrderService;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,8 +21,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.when;
 
 /**
@@ -56,8 +60,20 @@ public abstract class FunctionalTestBase {
         @Bean
         public IdempotencyService idempotencyService(IdempotencyRepository idempotencyRepository,
                                                      OrderRepository orderRepository) {
-            IdempotencyService svc = new IdempotencyService(idempotencyRepository, orderRepository);
-            return svc;
+            return new IdempotencyService(idempotencyRepository, orderRepository);
+        }
+
+        @Bean
+        @SuppressWarnings("unchecked")
+        public ShardCircuitBreakerService shardCircuitBreakerService() throws Exception {
+            ShardCircuitBreakerService mock = Mockito.mock(ShardCircuitBreakerService.class);
+            // Transparent pass-through: execute the callable directly
+            when(mock.execute(anyInt(), any(Role.class), any(Callable.class)))
+                    .thenAnswer(inv -> {
+                        Callable<?> op = inv.getArgument(2);
+                        return op.call();
+                    });
+            return mock;
         }
     }
 
